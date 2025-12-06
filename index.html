@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Viewer - Robust</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #222; }
+        canvas { display: block; }
+        #info {
+            position: absolute; top: 10px; width: 100%; text-align: center;
+            color: white; font-family: sans-serif; pointer-events: none;
+            text-shadow: 1px 1px 2px black;
+            z-index: 10;
+        }
+        #loading {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white; font-family: sans-serif; font-size: 1.5rem;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <b>Left Click</b>: Move &nbsp;|&nbsp; 
+        <b>Right Click</b>: Rotate &nbsp;|&nbsp; 
+        <b>Scroll</b>: Zoom
+    </div>
+    <div id="loading">Initializing loaders...</div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.168.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.168.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'; //to load glTF files
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';// to decode Draco-compressed geometry
+        import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'; // to decode KTX2-compressed textures
+        import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'; // to decode Meshopt-compressed meshes
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // to orbit around the model
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'; // for realistic environment
+
+        // setup scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x333333);
+
+        // setup camera
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 1000);
+        
+        // setup renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        document.body.appendChild(renderer.domElement);
+
+        // setup environment
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment()).texture;
+        scene.environmentIntensity = 0.5; 
+
+        // setup lights
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5); 
+        dirLight.position.set(5, 10, 7);
+        dirLight.castShadow = true; 
+        dirLight.shadow.mapSize.width = 2048; 
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.bias = -0.0001; 
+        dirLight.shadow.normalBias = 0.02;
+
+        scene.add(dirLight);
+
+        // setup controls to interact with the model
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = true;
+        
+        // setup glTF loader
+        const loader = new GLTFLoader();
+        const dracoLoader = new DRACOLoader(); // compression for geometry
+        dracoLoader.setDecoderPath('https://unpkg.com/three@0.168.0/examples/jsm/libs/draco/');
+        loader.setDRACOLoader(dracoLoader);
+        const ktx2Loader = new KTX2Loader() // compression for textures
+            .setTranscoderPath('https://unpkg.com/three@0.168.0/examples/jsm/libs/basis/')
+            .detectSupport(renderer);
+        loader.setKTX2Loader(ktx2Loader);
+        loader.setMeshoptDecoder(MeshoptDecoder); // compression for meshes
+
+        // load a glTF model
+        const modelName = 'Aula3DModel.glb'; 
+        document.getElementById('loading').innerText = `Loading ${modelName}...`;
+
+        loader.load(
+            modelName,
+            (gltf) => {
+                const model = gltf.scene;
+                scene.add(model);
+                
+                // make textures look better and enable shadows
+                const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        if (child.material.map) {
+                            child.material.map.anisotropy = maxAnisotropy;
+                        }
+                        if (child.material.emissiveMap) {
+                            child.material.emissiveMap.anisotropy = maxAnisotropy;
+                        }
+                        if (child.material.roughnessMap) {
+                            child.material.roughnessMap.anisotropy = maxAnisotropy;
+                        }
+
+                        child.castShadow = true;
+                        child.receiveShadow = true;                       
+                        child.material.depthWrite = true;
+                        child.material.side = THREE.DoubleSide; 
+                    }
+                });
+
+                // make bounding box to center and scale the model
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+
+                // center and scale the model
+                model.position.x += (model.position.x - center.x);
+                model.position.y += (model.position.y - center.y);
+                model.position.z += (model.position.z - center.z);
+
+                // adjust the camera and controls to fit the model
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 * Math.tan(fov * 2));
+                cameraZ *= 2.0; 
+                controls.minDistance = maxDim / 50; 
+                controls.maxDistance = maxDim * 20; 
+                controls.update();
+
+                // set camera to frame the model
+                camera.near = maxDim / 1000; 
+                camera.far = maxDim * 100;
+                camera.updateProjectionMatrix(); 
+
+                // position the camera
+                camera.position.set(cameraZ, cameraZ * 0.5, cameraZ);
+                camera.lookAt(0, 0, 0);
+                controls.target.set(0,0,0);
+                controls.update();
+
+                document.getElementById('loading').style.display = 'none';
+                console.log("Success: Model loaded.");
+            },
+            // get loading progress
+            (xhr) => {
+                if (xhr.total > 0) {
+                    const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                    document.getElementById('loading').innerText = `Loading... ${percent}%`;
+                }
+            },
+            (error) => {
+                console.error("Error loading model:", error);
+                document.getElementById('loading').innerText = 'Error! Check Console (F12).';
+            }
+        );
+
+        // handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
