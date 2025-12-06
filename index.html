@@ -3,49 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aula Handayani Interactive Viewer</title>
+<title>Aula Handayani Viewer</title>
 
 <style>
     body{margin:0;overflow:hidden;background:#181818;}
     canvas{display:block;}
-    #info{
-        position:absolute;top:10px;width:100%;text-align:center;color:white;
+    #info{position:absolute;top:10px;width:100%;text-align:center;color:white;
         font-family:sans-serif;text-shadow:1px 1px 3px black;pointer-events:none;
-        opacity:0;transition:0.8s;
-    }
-    #loading{
-        position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-        color:white;background:rgba(0,0,0,.75);padding:18px 25px;border-radius:10px;
-        font-family:sans-serif;
-    }
+        opacity:0;transition:.8s;}
+    #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+        color:white;background:#000a;padding:18px 25px;border-radius:10px;font-family:sans-serif;}
 
-    /* POPUP OVERLAY */
     #startScreen{
-        position:fixed;top:0;left:0;width:100%;height:100%;
-        background:#000000f0;display:flex;align-items:center;justify-content:center;
-        flex-direction:column;gap:25px;z-index:20;color:white;font-family:sans-serif;
-        text-align:center;animation-name:fadeIn;animation-duration:1.2s;
-    }
+        position:fixed;top:0;left:0;width:100%;height:100%;background:#000c;
+        display:flex;align-items:center;justify-content:center;flex-direction:column;gap:25px;
+        z-index:20;color:white;font-family:sans-serif;text-align:center;
+        animation:fadeIn 1.2s;}
+    #startScreen h1{font-size:32px;margin-bottom:8px;}
     #startScreen button{
-    background:#ff4fa3;
-    border:none;
-    padding:16px 36px;
-    border-radius:14px;
-    color:white;
-    font-size:18px;
-    font-weight:700;
-    cursor:pointer;
-    transition:0.25s;
-    box-shadow:0 0 12px rgba(255,80,160,0.5);
-}
-
-#startScreen button:hover{
-    background:#ff3397;
-    transform:scale(1.07);
-    box-shadow:0 0 20px rgba(255,80,160,0.75);
-}
-
-
+        background:#ff4fa3;border:none;padding:16px 36px;border-radius:14px;color:white;
+        font-size:18px;font-weight:700;cursor:pointer;transition:.25s;
+        box-shadow:0 0 12px rgba(255,80,160,.5);}
+    #startScreen button:hover{
+        background:#ff2f9b;transform:scale(1.08);
+        box-shadow:0 0 20px rgba(255,80,160,.8);}
     @keyframes fadeOut{from{opacity:1;}to{opacity:0;pointer-events:none;}}
     @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
 </style>
@@ -53,13 +34,12 @@
 
 <body>
 
-<!-- INTRO SCREEN -->
 <div id="startScreen">
     <h1>Welcome to Aula Handayani</h1>
     <button onclick="startExperience()">Enter</button>
 </div>
 
-<div id="info"><b>1</b> Orbit · <b>2</b> Walk · <b>L</b> Toggle Light</div>
+<div id="info"><b>1</b> Orbit · <b>2</b> Walk · <b>L</b> Lights</div>
 <div id="loading">Loading Aula...</div>
 
 <script type="importmap">
@@ -77,49 +57,55 @@ import {KTX2Loader} from "three/addons/loaders/KTX2Loader.js";
 import {MeshoptDecoder} from "three/addons/libs/meshopt_decoder.module.js";
 import {RoomEnvironment} from "three/addons/environments/RoomEnvironment.js";
 
-const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x202020);
 
-const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,1500);
+// -------------------------------------------------------------
+// 🔥 MAIN FIX → Increased near-plane for stable depth precision
+// -------------------------------------------------------------
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.6, 1500);
 
-const renderer=new THREE.WebGLRenderer({antialias:true});
+const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);     // smoother movement visuals
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.58;
 document.body.appendChild(renderer.domElement);
-renderer.shadowMap.enabled=true;
-renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=0.58;
 
-scene.environmentIntensity=0.22;
-scene.environment=new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment()).texture;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x202020);
+scene.environmentIntensity = 0.22;
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment()).texture;
 
+
+// ------------------- Lights -------------------
 let lamp=true;
-
 const ambient=new THREE.AmbientLight(0xffffff,0.30);
-scene.add(ambient);
-
-const dirLight=new THREE.DirectionalLight(0xffffff,0.57);
-dirLight.position.set(6,12,5);
-dirLight.castShadow=true;
-dirLight.shadow.bias=-0.00015;
-dirLight.shadow.normalBias=0.04;
-scene.add(dirLight);
-
+const dirLight=new THREE.DirectionalLight(0xffffff,1.25);
 const hemi=new THREE.HemisphereLight(0xe8f4ff,0x9db2c4,0.27);
-scene.add(hemi);
+
+dirLight.position.set(5,10,7);
+dirLight.castShadow=true;
+dirLight.shadow.mapSize.set(2048,2048);
+
+scene.add(ambient,dirLight,hemi);
 
 window.addEventListener("keydown",e=>{
-    if(e.key.toLowerCase()==="l"){
+    if(e.key.toLowerCase()=="l"){
         lamp=!lamp;
-        ambient.intensity=lamp?0.30:0.02;
-        dirLight.intensity=lamp?0.57:0.03;
-        hemi.intensity=lamp?0.27:0.01;
-        renderer.toneMappingExposure=lamp?0.58:0.18;
+        ambient.intensity=lamp?.30:.02;
+        dirLight.intensity=lamp?1.25:.05;
+        hemi.intensity=lamp?.27:.03;
+        renderer.toneMappingExposure=lamp?.58:.18;
     }
 });
 
+
+// ------------------- Controls -------------------
 let mode="orbit",controlsEnabled=false;
 const orbit=new OrbitControls(camera,renderer.domElement);
 const fp=new PointerLockControls(camera,document.body);
+
 orbit.enableDamping=true;
 
 let move={w:false,a:false,s:false,d:false};
@@ -127,39 +113,71 @@ let vel=new THREE.Vector3(),dir=new THREE.Vector3();
 const H=1.75,SPD=5,ACC=18,FR=9;
 camera.position.y=H;
 
-document.addEventListener("keydown",e=>{if(move[e.key]!=null && controlsEnabled)move[e.key]=true;});
+document.addEventListener("keydown",e=>{if(move[e.key]!=null&&controlsEnabled)move[e.key]=true;});
 document.addEventListener("keyup",e=>{if(move[e.key]!=null)move[e.key]=false;});
 
 window.addEventListener("keydown",e=>{
     if(!controlsEnabled)return;
-    if(e.key==="1"){mode="orbit";orbit.enabled=true;fp.unlock();}
-    if(e.key==="2"){mode="first";orbit.enabled=false;fp.lock();}
+    if(e.key=="1"){mode="orbit";orbit.enabled=true;fp.unlock();}
+    if(e.key=="2"){mode="first";orbit.enabled=false;fp.lock();}
 });
-document.addEventListener("click",()=>mode==="first"&&controlsEnabled&&fp.lock());
+
+document.addEventListener("click",()=>mode=="first"&&controlsEnabled&&fp.lock());
 
 function walk(dt){
     dir.set((move.d?1:0)-(move.a?1:0),0,(move.w?1:0)-(move.s?1:0)).normalize();
     if(dir.length()>0){vel.x+=dir.x*ACC*dt;vel.z+=dir.z*ACC*dt;}
     vel.multiplyScalar(1-FR*dt);
-    if(Math.abs(vel.x)<0.01)vel.x=0;
-    if(Math.abs(vel.z)<0.01)vel.z=0;
     fp.moveRight(vel.x*dt*SPD);
     fp.moveForward(vel.z*dt*SPD);
     camera.position.y=H;
 }
 
+
+// ------------------- Load GLB -------------------
 const loader=new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/draco/"));
 loader.setKTX2Loader(new KTX2Loader().setTranscoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/basis/").detectSupport(renderer));
 loader.setMeshoptDecoder(MeshoptDecoder);
 
 loader.load("Aula3DModel.glb",g=>{
-    scene.add(g.scene);
+    const model=g.scene;scene.add(model);
+    const maxAnisotropy=renderer.capabilities.getMaxAnisotropy();
+
+    model.traverse(child=>{
+        if(child.isMesh){
+
+            child.castShadow=true;
+            child.receiveShadow=true;
+
+            // 🔥 anti-shimmering material adjustments
+            if(child.material){
+                child.material.metalness = 0.1;
+                child.material.roughness = 0.75;
+                child.material.depthWrite = true;
+                child.material.side = THREE.DoubleSide;
+            }
+
+            // 🔥 strongest z-fighting stops here
+            const name = child.name.toLowerCase();
+            if(name.includes("wall")||name.includes("floor")||name.includes("dinding")){
+                child.material.polygonOffset=true;
+                child.material.polygonOffsetFactor=-5;
+                child.material.polygonOffsetUnits=-5;
+            }
+
+            // sharpen textures
+            if(child.material.map)child.material.map.anisotropy=maxAnisotropy;
+        }
+    });
+
     camera.position.set(0.5,H,-1.9);
     camera.lookAt(0,H,0);
     document.getElementById("loading").remove();
 });
 
+
+// ------------------- Render -------------------
 addEventListener("resize",()=>{
     camera.aspect=innerWidth/innerHeight;
     camera.updateProjectionMatrix();
@@ -169,19 +187,19 @@ addEventListener("resize",()=>{
 const clk=new THREE.Clock();
 function animate(){
     requestAnimationFrame(animate);
-    if(mode==="first"&&controlsEnabled)walk(clk.getDelta());
+    if(mode=="first"&&controlsEnabled)walk(clk.getDelta());
     else orbit.update();
     renderer.render(scene,camera);
 }
 animate();
 
 
-/* ============= START BUTTON FUNCTION ============= */
-window.startExperience=function(){
+// ------------------- Start -------------------
+window.startExperience=()=>{
     controlsEnabled=true;
     document.getElementById("startScreen").style.animation="fadeOut 1s forwards";
     setTimeout(()=>document.getElementById("info").style.opacity=1,800);
-}
+};
 
 </script>
 </body>
