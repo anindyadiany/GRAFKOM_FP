@@ -39,7 +39,7 @@
     <button onclick="startExperience()">Enter</button>
 </div>
 
-<div id="info"><b>1</b> Orbit · <b>2</b> Walk · <b>L</b> Lights</div>
+<div id="info"><b>1</b> Orbit · <b>2</b> Walk · <b>Space</b> Jump · <b>L</b> Lights</div>
 <div id="loading">Loading Aula...</div>
 
 <script type="importmap">
@@ -57,28 +57,26 @@ import {KTX2Loader} from "three/addons/loaders/KTX2Loader.js";
 import {MeshoptDecoder} from "three/addons/libs/meshopt_decoder.module.js";
 import {RoomEnvironment} from "three/addons/environments/RoomEnvironment.js";
 
-
-// -------------------------------------------------------------
-// 🔥 MAIN FIX → Increased near-plane for stable depth precision
-// -------------------------------------------------------------
+//----------------------------- CAMERA FIX (better depth precision) -----------------------------//
 const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.6, 1500);
 
-const renderer = new THREE.WebGLRenderer({antialias:true});
+//----------------------------- RENDERER -----------------------------//
+const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);     // smoother movement visuals
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.58;
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=0.58;
 document.body.appendChild(renderer.domElement);
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x202020);
-scene.environmentIntensity = 0.22;
-scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment()).texture;
+//----------------------------- SCENE -----------------------------//
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x202020);
+scene.environmentIntensity=0.22;
+scene.environment=new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment()).texture;
 
-
-// ------------------- Lights -------------------
+//----------------------------- LIGHTS -----------------------------//
 let lamp=true;
 const ambient=new THREE.AmbientLight(0xffffff,0.30);
 const dirLight=new THREE.DirectionalLight(0xffffff,1.25);
@@ -89,7 +87,6 @@ dirLight.castShadow=true;
 dirLight.shadow.mapSize.set(2048,2048);
 
 scene.add(ambient,dirLight,hemi);
-
 window.addEventListener("keydown",e=>{
     if(e.key.toLowerCase()=="l"){
         lamp=!lamp;
@@ -100,21 +97,39 @@ window.addEventListener("keydown",e=>{
     }
 });
 
-
-// ------------------- Controls -------------------
+//----------------------------- CONTROLS -----------------------------//
 let mode="orbit",controlsEnabled=false;
 const orbit=new OrbitControls(camera,renderer.domElement);
 const fp=new PointerLockControls(camera,document.body);
-
 orbit.enableDamping=true;
 
-let move={w:false,a:false,s:false,d:false};
-let vel=new THREE.Vector3(),dir=new THREE.Vector3();
-const H=1.75,SPD=5,ACC=18,FR=9;
-camera.position.y=H;
+//----------------------------- MOVEMENT + JUMP -----------------------------//
+let move = { w:false,a:false,s:false,d:false };
+let vel = new THREE.Vector3(), dir = new THREE.Vector3();
 
-document.addEventListener("keydown",e=>{if(move[e.key]!=null&&controlsEnabled)move[e.key]=true;});
-document.addEventListener("keyup",e=>{if(move[e.key]!=null)move[e.key]=false;});
+const H = 1.75;
+const SPD = 9;
+const ACC = 22;
+const FR = 8;
+const JUMP_FORCE = 12;
+const GRAV = 18;
+
+let yVel = 0;
+let grounded = true;
+
+
+
+// keydown / keyup
+document.addEventListener("keydown",e=>{
+    if(move[e.key]!=null && controlsEnabled) move[e.key]=true;
+    if(e.code==="Space" && grounded && controlsEnabled){
+        yVel=JUMP_FORCE;
+        grounded=false;
+    }
+});
+document.addEventListener("keyup",e=>{
+    if(move[e.key]!=null) move[e.key]=false;
+});
 
 window.addEventListener("keydown",e=>{
     if(!controlsEnabled)return;
@@ -128,13 +143,22 @@ function walk(dt){
     dir.set((move.d?1:0)-(move.a?1:0),0,(move.w?1:0)-(move.s?1:0)).normalize();
     if(dir.length()>0){vel.x+=dir.x*ACC*dt;vel.z+=dir.z*ACC*dt;}
     vel.multiplyScalar(1-FR*dt);
+
     fp.moveRight(vel.x*dt*SPD);
     fp.moveForward(vel.z*dt*SPD);
-    camera.position.y=H;
+
+    //---------- gravity & jump
+    yVel -= GRAV*dt;
+    camera.position.y += yVel * dt;
+
+    if(camera.position.y<=H){
+        camera.position.y=H;
+        yVel=0;
+        grounded=true;
+    }
 }
 
-
-// ------------------- Load GLB -------------------
+//----------------------------- LOAD MODEL -----------------------------//
 const loader=new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/draco/"));
 loader.setKTX2Loader(new KTX2Loader().setTranscoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/basis/").detectSupport(renderer));
@@ -146,27 +170,17 @@ loader.load("Aula3DModel.glb",g=>{
 
     model.traverse(child=>{
         if(child.isMesh){
-
             child.castShadow=true;
             child.receiveShadow=true;
+            child.material.metalness=0.1;
+            child.material.roughness=0.75;
 
-            // 🔥 anti-shimmering material adjustments
-            if(child.material){
-                child.material.metalness = 0.1;
-                child.material.roughness = 0.75;
-                child.material.depthWrite = true;
-                child.material.side = THREE.DoubleSide;
-            }
-
-            // 🔥 strongest z-fighting stops here
-            const name = child.name.toLowerCase();
+            const name=child.name.toLowerCase();
             if(name.includes("wall")||name.includes("floor")||name.includes("dinding")){
                 child.material.polygonOffset=true;
                 child.material.polygonOffsetFactor=-5;
                 child.material.polygonOffsetUnits=-5;
             }
-
-            // sharpen textures
             if(child.material.map)child.material.map.anisotropy=maxAnisotropy;
         }
     });
@@ -176,8 +190,7 @@ loader.load("Aula3DModel.glb",g=>{
     document.getElementById("loading").remove();
 });
 
-
-// ------------------- Render -------------------
+//----------------------------- RENDER LOOP -----------------------------//
 addEventListener("resize",()=>{
     camera.aspect=innerWidth/innerHeight;
     camera.updateProjectionMatrix();
@@ -193,8 +206,7 @@ function animate(){
 }
 animate();
 
-
-// ------------------- Start -------------------
+//----------------------------- START -----------------------------//
 window.startExperience=()=>{
     controlsEnabled=true;
     document.getElementById("startScreen").style.animation="fadeOut 1s forwards";
