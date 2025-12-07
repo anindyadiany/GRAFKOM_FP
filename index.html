@@ -39,7 +39,7 @@
     <button onclick="startExperience()">Enter</button>
 </div>
 
-<div id="info"><b>1</b> Orbit · <b>2</b> Walk · <b>Space</b> Jump · <b>L</b> Lights</div>
+<div id="info"><b>L</b> Room Lights · <b>Y</b> Wall Strips · click = show mesh name</div>
 <div id="loading">Loading Aula...</div>
 
 <script type="importmap">
@@ -51,10 +51,8 @@
 
 <script type="module">
 
-// ========================== IMPORT ==========================
 import * as THREE from "three";
 import {OrbitControls} from "three/addons/controls/OrbitControls.js";
-import {PointerLockControls} from "three/addons/controls/PointerLockControls.js";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {DRACOLoader} from "three/addons/loaders/DRACOLoader.js";
 import {KTX2Loader} from "three/addons/loaders/KTX2Loader.js";
@@ -77,19 +75,20 @@ scene.environment=new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironme
 scene.environmentIntensity=0.22;
 
 // ========================== LIGHTS ==========================
-let lamp=true;
-const ambient=new THREE.AmbientLight(0xffffff,0.30);
-const dirLight=new THREE.DirectionalLight(0xffffff,0.90);
-const hemi=new THREE.HemisphereLight(0xe8f4ff,0x9db2c4,0.27);
+let lamp = true;      // main white lights on/off
+let stripsOn = true;  // yellow wall strips on/off
+
+const ambient = new THREE.AmbientLight(0xffffff,0.25);
+const dirLight = new THREE.DirectionalLight(0xffffff,0.7);
+const hemi = new THREE.HemisphereLight(0xe8f4ff,0x9db2c4,0.22);
 dirLight.position.set(5,10,7);
+
 scene.add(ambient,dirLight,hemi);
 
-// ========================== CONTROLS ==========================
-let mode="orbit",controlsEnabled=false;
+// ========================== CONTROLS (simple orbit only) ==========================
 const orbit=new OrbitControls(camera,renderer.domElement);
-const fp=new PointerLockControls(camera,document.body);
 
-// ========================== RAYCAST (Check Clicked Mesh) ==========================
+// ========================== CLICK-TO-GET MESH NAME ==========================
 const ray=new Raycaster(),mouse=new Vector2();
 window.addEventListener("click",e=>{
     mouse.x=(e.clientX/innerWidth)*2-1;
@@ -99,40 +98,45 @@ window.addEventListener("click",e=>{
     if(h.length>0) console.log("🟩 You clicked →",h[0].object.name);
 });
 
-// ========================== LOAD GLB ==========================
+// ========================== LOAD SCENE MODEL ==========================
+
 const loader=new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/draco/"));
 loader.setKTX2Loader(new KTX2Loader().setTranscoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/basis/").detectSupport(renderer));
 loader.setMeshoptDecoder(MeshoptDecoder);
 
+const stripMeshes = [];
+const stripNames = [
+    "Cube001_1" 
+];
+
 loader.load("Aula3DModel.glb",g=>{
     const model=g.scene;
     scene.add(model);
 
-    // =========== TV SCREEN IMAGE ===========
+    // 🖥 TV SCREEN IMAGE
     model.traverse(o=>{
-        if(o.isMesh && (o.name==="Box001" || o.name==="Box001003" || o.name==="Box001004")){
-            const tvTexture = new THREE.TextureLoader().load("image2.jpg");
+        if(o.isMesh && ["Box001","Box001003","Box001004"].includes(o.name)){
+            const tvTexture=new THREE.TextureLoader().load("image2.jpg");
             tvTexture.center.set(0.5,0.5);
             tvTexture.rotation=Math.PI/2;
             o.material=new THREE.MeshBasicMaterial({map:tvTexture,toneMapped:false});
         }
     });
 
-    // =========== ADD WOOD TEXTURE TO ID246025 ===========
-     // =========== THIS DOESNT WORK!!!!!! ===========
-    const wood = new THREE.TextureLoader().load("wood.jpg");
-    wood.wrapS=wood.wrapT=THREE.RepeatWrapping;
-    wood.repeat.set(3,3);
-
+    // ✨ YELLOW WALL STRIPS (emissive)
     model.traverse(o=>{
-        if(o.isMesh && o.name==="ID246025" || o.name==="ID246035"){
-            o.material=new THREE.MeshStandardMaterial({
-                map:wood,
-                roughness:0.65,
-                metalness:0.05
+        if(o.isMesh && stripNames.includes(o.name)){
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0xfff4d4,                   // pale warm
+                emissive: 0xffc15a,               // strong yellow/orange
+                emissiveIntensity: 2.5,           // brightness of glow
+                roughness: 0.3,
+                metalness: 0.0
             });
-            console.log("🪵 Wood applied → ID246025");
+            o.material = mat;
+            stripMeshes.push(mat);
+            console.log("⚡ Strip material applied:", o.name);
         }
     });
 
@@ -141,7 +145,29 @@ loader.load("Aula3DModel.glb",g=>{
     document.getElementById("loading").remove();
 });
 
-// ========================== LOOP ==========================
+// ========================== KEY CONTROLS ==========================
+window.addEventListener("keydown", e=>{
+    const k = e.key.toLowerCase();
+
+    // L = main white lights
+    if(k==="l"){
+        lamp = !lamp;
+        ambient.intensity  = lamp ? 0.25 : 0.02;
+        dirLight.intensity = lamp ? 0.7  : 0.05;
+        hemi.intensity     = lamp ? 0.22 : 0.03;
+        console.log("💡 Room lights:", lamp?"ON":"OFF");
+    }
+
+    // Y = yellow wall strips (emissive)
+    if(k==="y"){
+        stripsOn = !stripsOn;
+        const intensity = stripsOn ? 2.5 : 0.0;
+        stripMeshes.forEach(m => m.emissiveIntensity = intensity);
+        console.log("🟡 Wall strips:", stripsOn?"ON":"OFF");
+    }
+});
+
+// ========================== RENDER ==========================
 addEventListener("resize",()=>{
     camera.aspect=innerWidth/innerHeight;
     camera.updateProjectionMatrix();
@@ -150,9 +176,8 @@ addEventListener("resize",()=>{
 const loop=()=>{requestAnimationFrame(loop);orbit.update();renderer.render(scene,camera);}
 loop();
 
-// ========================== START BTN ==========================
+// ========================== START BUTTON ==========================
 window.startExperience=()=>{
-    controlsEnabled=true;
     document.getElementById("startScreen").style.animation="fadeOut 1s forwards";
     setTimeout(()=>document.getElementById("info").style.opacity=1,800);
 };
