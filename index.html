@@ -64,8 +64,6 @@ const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.6, 1500
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
-renderer.shadowMap.enabled=true;
-renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=0.58;
 document.body.appendChild(renderer.domElement);
@@ -79,19 +77,18 @@ scene.environment=new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironme
 //----------------------------- LIGHTS -----------------------------//
 let lamp=true;
 const ambient=new THREE.AmbientLight(0xffffff,0.30);
-const dirLight=new THREE.DirectionalLight(0xffffff,1.25);
+const dirLight=new THREE.DirectionalLight(0xffffff,0.90);
 const hemi=new THREE.HemisphereLight(0xe8f4ff,0x9db2c4,0.27);
 
 dirLight.position.set(5,10,7);
-dirLight.castShadow=true;
-dirLight.shadow.mapSize.set(2048,2048);
 
 scene.add(ambient,dirLight,hemi);
+
 window.addEventListener("keydown",e=>{
     if(e.key.toLowerCase()=="l"){
         lamp=!lamp;
         ambient.intensity=lamp?.30:.02;
-        dirLight.intensity=lamp?1.25:.05;
+        dirLight.intensity=lamp?0.90:.03;
         hemi.intensity=lamp?.27:.03;
         renderer.toneMappingExposure=lamp?.58:.18;
     }
@@ -116,8 +113,6 @@ const GRAV = 18;
 
 let yVel = 0;
 let grounded = true;
-
-
 
 // keydown / keyup
 document.addEventListener("keydown",e=>{
@@ -170,8 +165,6 @@ loader.load("Aula3DModel.glb",g=>{
 
     model.traverse(child=>{
         if(child.isMesh){
-            child.castShadow=true;
-            child.receiveShadow=true;
             child.material.metalness=0.1;
             child.material.roughness=0.75;
 
