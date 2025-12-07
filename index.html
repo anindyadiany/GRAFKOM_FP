@@ -8,25 +8,33 @@
 <style>
     body{margin:0;overflow:hidden;background:#181818;}
     canvas{display:block;}
-    #info{position:absolute;top:10px;width:100%;text-align:center;color:white;
+    #info{
+        position:absolute;top:10px;width:100%;text-align:center;color:white;
         font-family:sans-serif;text-shadow:1px 1px 3px black;pointer-events:none;
-        opacity:0;transition:.8s;}
-    #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-        color:white;background:#000a;padding:18px 25px;border-radius:10px;font-family:sans-serif;}
+        opacity:0;transition:.8s;font-size:15px;
+    }
+    #loading{
+        position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+        color:white;background:#000a;padding:18px 25px;border-radius:10px;
+        font-family:sans-serif;
+    }
 
     #startScreen{
         position:fixed;top:0;left:0;width:100%;height:100%;background:#000c;
         display:flex;align-items:center;justify-content:center;flex-direction:column;gap:25px;
         z-index:20;color:white;font-family:sans-serif;text-align:center;
-        animation:fadeIn 1.2s;}
+        animation:fadeIn 1.2s;
+    }
     #startScreen h1{font-size:32px;margin-bottom:8px;}
     #startScreen button{
         background:#ff4fa3;border:none;padding:16px 36px;border-radius:14px;color:white;
         font-size:18px;font-weight:700;cursor:pointer;transition:.25s;
-        box-shadow:0 0 12px rgba(255,80,160,.5);}
+        box-shadow:0 0 12px rgba(255,80,160,.5);
+    }
     #startScreen button:hover{
         background:#ff2f9b;transform:scale(1.08);
-        box-shadow:0 0 20px rgba(255,80,160,.8);}
+        box-shadow:0 0 20px rgba(255,80,160,.8);
+    }
     @keyframes fadeOut{from{opacity:1;}to{opacity:0;pointer-events:none;}}
     @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
 </style>
@@ -39,7 +47,16 @@
     <button onclick="startExperience()">Enter</button>
 </div>
 
-<div id="info"><b>L</b> Room Lights · <b>Y</b> Wall Strips · click = show mesh name</div>
+<!-- UI updated with toggle keys -->
+<div id="info">
+    <b>L</b> All Lights · 
+    <b>Y</b> Wall Strips · 
+    <b>1</b> Ambient · 
+    <b>2</b> Directional · 
+    <b>3</b> Hemisphere · 
+    click = mesh name
+</div>
+
 <div id="loading">Loading Aula...</div>
 
 <script type="importmap">
@@ -75,20 +92,20 @@ scene.environment=new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironme
 scene.environmentIntensity=0.22;
 
 // ========================== LIGHTS ==========================
-let lamp = true;      // main white lights on/off
-let stripsOn = true;  // yellow wall strips on/off
+let lamp = true;      // Toggles all lights (L)
+let stripsOn = true;  // Wall strip emissive lights (Y)
 
 const ambient = new THREE.AmbientLight(0xffffff,0.25);
 const dirLight = new THREE.DirectionalLight(0xffffff,0.7);
 const hemi = new THREE.HemisphereLight(0xe8f4ff,0x9db2c4,0.22);
-dirLight.position.set(5,10,7);
 
+dirLight.position.set(5,10,7);
 scene.add(ambient,dirLight,hemi);
 
-// ========================== CONTROLS (simple orbit only) ==========================
+// ========================== CONTROLS ==========================
 const orbit=new OrbitControls(camera,renderer.domElement);
 
-// ========================== CLICK-TO-GET MESH NAME ==========================
+// ========================== MESH CLICK NAME ==========================
 const ray=new Raycaster(),mouse=new Vector2();
 window.addEventListener("click",e=>{
     mouse.x=(e.clientX/innerWidth)*2-1;
@@ -98,25 +115,22 @@ window.addEventListener("click",e=>{
     if(h.length>0) console.log("🟩 You clicked →",h[0].object.name);
 });
 
-// ========================== LOAD SCENE MODEL ==========================
-
+// ========================== LOAD MODEL ==========================
 const loader=new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/draco/"));
 loader.setKTX2Loader(new KTX2Loader().setTranscoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/basis/").detectSupport(renderer));
 loader.setMeshoptDecoder(MeshoptDecoder);
 
 const stripMeshes = [];
-const stripNames = [
-    "Cube001_1" 
-];
+const stripNames = ["Cube001_1"];
 
 loader.load("Aula3DModel.glb",g=>{
     const model=g.scene;
     scene.add(model);
 
-    // 🖥 TV SCREEN IMAGE
+    // TV SCREEN
     model.traverse(o=>{
-        if(o.isMesh && ["Box001","Box001003","Box001004"].includes(o.name)){
+        if(o.isMesh && ["Box001","Box001003"].includes(o.name)){
             const tvTexture=new THREE.TextureLoader().load("image2.jpg");
             tvTexture.center.set(0.5,0.5);
             tvTexture.rotation=Math.PI/2;
@@ -124,19 +138,18 @@ loader.load("Aula3DModel.glb",g=>{
         }
     });
 
-    // ✨ YELLOW WALL STRIPS (emissive)
+    // WALL STRIPS
     model.traverse(o=>{
         if(o.isMesh && stripNames.includes(o.name)){
             const mat = new THREE.MeshStandardMaterial({
-                color: 0xfff4d4,                   // pale warm
-                emissive: 0xffc15a,               // strong yellow/orange
-                emissiveIntensity: 2.5,           // brightness of glow
+                color: 0xfff4d4,
+                emissive: 0xffc15a,
+                emissiveIntensity: 2.5,
                 roughness: 0.3,
                 metalness: 0.0
             });
             o.material = mat;
             stripMeshes.push(mat);
-            console.log("⚡ Strip material applied:", o.name);
         }
     });
 
@@ -145,26 +158,28 @@ loader.load("Aula3DModel.glb",g=>{
     document.getElementById("loading").remove();
 });
 
-// ========================== KEY CONTROLS ==========================
+// ========================== LIGHT TOGGLES ==========================
 window.addEventListener("keydown", e=>{
-    const k = e.key.toLowerCase();
+    const k=e.key.toLowerCase();
 
-    // L = main white lights
+    // Toggle all lights
     if(k==="l"){
-        lamp = !lamp;
-        ambient.intensity  = lamp ? 0.25 : 0.02;
-        dirLight.intensity = lamp ? 0.7  : 0.05;
-        hemi.intensity     = lamp ? 0.22 : 0.03;
-        console.log("💡 Room lights:", lamp?"ON":"OFF");
+        lamp=!lamp;
+        ambient.visible=dirLight.visible=hemi.visible=lamp;
+        console.log("💡 All Lights:",lamp?"ON":"OFF");
     }
 
-    // Y = yellow wall strips (emissive)
+    // Wall Strips
     if(k==="y"){
-        stripsOn = !stripsOn;
-        const intensity = stripsOn ? 2.5 : 0.0;
-        stripMeshes.forEach(m => m.emissiveIntensity = intensity);
-        console.log("🟡 Wall strips:", stripsOn?"ON":"OFF");
+        stripsOn=!stripsOn;
+        stripMeshes.forEach(m=>m.emissiveIntensity=stripsOn?2.5:0);
+        console.log("Wall Strips:",stripsOn?"ON":"OFF");
     }
+
+    // Individual Light Toggles
+    if(k==="1") { ambient.visible=!ambient.visible; console.log("Ambient →",ambient.visible); }
+    if(k==="2") { dirLight.visible=!dirLight.visible; console.log("Directional →",dirLight.visible); }
+    if(k==="3") { hemi.visible=!hemi.visible; console.log("Hemisphere →",hemi.visible); }
 });
 
 // ========================== RENDER ==========================
@@ -173,15 +188,13 @@ addEventListener("resize",()=>{
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth,innerHeight);
 });
-const loop=()=>{requestAnimationFrame(loop);orbit.update();renderer.render(scene,camera);}
-loop();
+(function loop(){ requestAnimationFrame(loop); orbit.update(); renderer.render(scene,camera); })();
 
 // ========================== START BUTTON ==========================
 window.startExperience=()=>{
     document.getElementById("startScreen").style.animation="fadeOut 1s forwards";
     setTimeout(()=>document.getElementById("info").style.opacity=1,800);
 };
-
 </script>
 </body>
 </html>
