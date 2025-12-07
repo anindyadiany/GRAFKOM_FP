@@ -43,11 +43,15 @@
 <div id="loading">Loading Aula...</div>
 
 <script type="importmap">
-{"imports":{"three":"https://unpkg.com/three@0.168.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.168.0/examples/jsm/"}}
+{"imports":{
+    "three":"https://unpkg.com/three@0.168.0/build/three.module.js",
+    "three/addons/":"https://unpkg.com/three@0.168.0/examples/jsm/"
+}}
 </script>
 
 <script type="module">
 
+// ========================== IMPORT ==========================
 import * as THREE from "three";
 import {OrbitControls} from "three/addons/controls/OrbitControls.js";
 import {PointerLockControls} from "three/addons/controls/PointerLockControls.js";
@@ -56,150 +60,97 @@ import {DRACOLoader} from "three/addons/loaders/DRACOLoader.js";
 import {KTX2Loader} from "three/addons/loaders/KTX2Loader.js";
 import {MeshoptDecoder} from "three/addons/libs/meshopt_decoder.module.js";
 import {RoomEnvironment} from "three/addons/environments/RoomEnvironment.js";
+import { Raycaster, Vector2 } from "three";
 
-//----------------------------- CAMERA FIX (better depth precision) -----------------------------//
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.6, 1500);
-
-//----------------------------- RENDERER -----------------------------//
+// ========================== SCENE ==========================
+const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.6,1500);
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setPixelRatio(devicePixelRatio);
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=0.58;
 document.body.appendChild(renderer.domElement);
 
-//----------------------------- SCENE -----------------------------//
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x202020);
-scene.environmentIntensity=0.22;
 scene.environment=new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment()).texture;
+scene.environmentIntensity=0.22;
 
-//----------------------------- LIGHTS -----------------------------//
+// ========================== LIGHTS ==========================
 let lamp=true;
 const ambient=new THREE.AmbientLight(0xffffff,0.30);
 const dirLight=new THREE.DirectionalLight(0xffffff,0.90);
 const hemi=new THREE.HemisphereLight(0xe8f4ff,0x9db2c4,0.27);
-
 dirLight.position.set(5,10,7);
-
 scene.add(ambient,dirLight,hemi);
 
-window.addEventListener("keydown",e=>{
-    if(e.key.toLowerCase()=="l"){
-        lamp=!lamp;
-        ambient.intensity=lamp?.30:.02;
-        dirLight.intensity=lamp?0.90:.03;
-        hemi.intensity=lamp?.27:.03;
-        renderer.toneMappingExposure=lamp?.58:.18;
-    }
-});
-
-//----------------------------- CONTROLS -----------------------------//
+// ========================== CONTROLS ==========================
 let mode="orbit",controlsEnabled=false;
 const orbit=new OrbitControls(camera,renderer.domElement);
 const fp=new PointerLockControls(camera,document.body);
-orbit.enableDamping=true;
 
-//----------------------------- MOVEMENT + JUMP -----------------------------//
-let move = { w:false,a:false,s:false,d:false };
-let vel = new THREE.Vector3(), dir = new THREE.Vector3();
-
-const H = 1.75;
-const SPD = 9;
-const ACC = 22;
-const FR = 8;
-const JUMP_FORCE = 12;
-const GRAV = 18;
-
-let yVel = 0;
-let grounded = true;
-
-// keydown / keyup
-document.addEventListener("keydown",e=>{
-    if(move[e.key]!=null && controlsEnabled) move[e.key]=true;
-    if(e.code==="Space" && grounded && controlsEnabled){
-        yVel=JUMP_FORCE;
-        grounded=false;
-    }
-});
-document.addEventListener("keyup",e=>{
-    if(move[e.key]!=null) move[e.key]=false;
+// ========================== RAYCAST (Check Clicked Mesh) ==========================
+const ray=new Raycaster(),mouse=new Vector2();
+window.addEventListener("click",e=>{
+    mouse.x=(e.clientX/innerWidth)*2-1;
+    mouse.y=-(e.clientY/innerHeight)*2+1;
+    ray.setFromCamera(mouse,camera);
+    const h=ray.intersectObjects(scene.children,true);
+    if(h.length>0) console.log("🟩 You clicked →",h[0].object.name);
 });
 
-window.addEventListener("keydown",e=>{
-    if(!controlsEnabled)return;
-    if(e.key=="1"){mode="orbit";orbit.enabled=true;fp.unlock();}
-    if(e.key=="2"){mode="first";orbit.enabled=false;fp.lock();}
-});
-
-document.addEventListener("click",()=>mode=="first"&&controlsEnabled&&fp.lock());
-
-function walk(dt){
-    dir.set((move.d?1:0)-(move.a?1:0),0,(move.w?1:0)-(move.s?1:0)).normalize();
-    if(dir.length()>0){vel.x+=dir.x*ACC*dt;vel.z+=dir.z*ACC*dt;}
-    vel.multiplyScalar(1-FR*dt);
-
-    fp.moveRight(vel.x*dt*SPD);
-    fp.moveForward(vel.z*dt*SPD);
-
-    //---------- gravity & jump
-    yVel -= GRAV*dt;
-    camera.position.y += yVel * dt;
-
-    if(camera.position.y<=H){
-        camera.position.y=H;
-        yVel=0;
-        grounded=true;
-    }
-}
-
-//----------------------------- LOAD MODEL -----------------------------//
+// ========================== LOAD GLB ==========================
 const loader=new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/draco/"));
 loader.setKTX2Loader(new KTX2Loader().setTranscoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/basis/").detectSupport(renderer));
 loader.setMeshoptDecoder(MeshoptDecoder);
 
 loader.load("Aula3DModel.glb",g=>{
-    const model=g.scene;scene.add(model);
-    const maxAnisotropy=renderer.capabilities.getMaxAnisotropy();
+    const model=g.scene;
+    scene.add(model);
 
-    model.traverse(child=>{
-        if(child.isMesh){
-            child.material.metalness=0.1;
-            child.material.roughness=0.75;
-
-            const name=child.name.toLowerCase();
-            if(name.includes("wall")||name.includes("floor")||name.includes("dinding")){
-                child.material.polygonOffset=true;
-                child.material.polygonOffsetFactor=-5;
-                child.material.polygonOffsetUnits=-5;
-            }
-            if(child.material.map)child.material.map.anisotropy=maxAnisotropy;
+    // =========== TV SCREEN IMAGE ===========
+    model.traverse(o=>{
+        if(o.isMesh && (o.name==="Box001" || o.name==="Box001003" || o.name==="Box001004")){
+            const tvTexture = new THREE.TextureLoader().load("image2.jpg");
+            tvTexture.center.set(0.5,0.5);
+            tvTexture.rotation=Math.PI/2;
+            o.material=new THREE.MeshBasicMaterial({map:tvTexture,toneMapped:false});
         }
     });
 
-    camera.position.set(0.5,H,-1.9);
-    camera.lookAt(0,H,0);
+    // =========== ADD WOOD TEXTURE TO ID246025 ===========
+     // =========== THIS DOESNT WORK!!!!!! ===========
+    const wood = new THREE.TextureLoader().load("wood.jpg");
+    wood.wrapS=wood.wrapT=THREE.RepeatWrapping;
+    wood.repeat.set(3,3);
+
+    model.traverse(o=>{
+        if(o.isMesh && o.name==="ID246025" || o.name==="ID246035"){
+            o.material=new THREE.MeshStandardMaterial({
+                map:wood,
+                roughness:0.65,
+                metalness:0.05
+            });
+            console.log("🪵 Wood applied → ID246025");
+        }
+    });
+
+    camera.position.set(0.5,1.75,-1.9);
+    camera.lookAt(0,1.75,0);
     document.getElementById("loading").remove();
 });
 
-//----------------------------- RENDER LOOP -----------------------------//
+// ========================== LOOP ==========================
 addEventListener("resize",()=>{
     camera.aspect=innerWidth/innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth,innerHeight);
 });
+const loop=()=>{requestAnimationFrame(loop);orbit.update();renderer.render(scene,camera);}
+loop();
 
-const clk=new THREE.Clock();
-function animate(){
-    requestAnimationFrame(animate);
-    if(mode=="first"&&controlsEnabled)walk(clk.getDelta());
-    else orbit.update();
-    renderer.render(scene,camera);
-}
-animate();
-
-//----------------------------- START -----------------------------//
+// ========================== START BTN ==========================
 window.startExperience=()=>{
     controlsEnabled=true;
     document.getElementById("startScreen").style.animation="fadeOut 1s forwards";
