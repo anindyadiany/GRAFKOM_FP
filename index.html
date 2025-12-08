@@ -6,37 +6,31 @@
 <title>Aula Handayani Viewer</title>
 
 <style>
-    body{margin:0;overflow:hidden;background:#181818;}
-    canvas{display:block;}
-    #info{
-        position:absolute;top:10px;width:100%;text-align:center;color:white;
-        font-family:sans-serif;text-shadow:1px 1px 3px black;pointer-events:none;
-        opacity:0;transition:.8s;font-size:15px;
-    }
-    #loading{
-        position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-        color:white;background:#000a;padding:18px 25px;border-radius:10px;
-        font-family:sans-serif;
-    }
+body{margin:0;overflow:hidden;background:#181818;}
+canvas{display:block;}
 
-    #startScreen{
-        position:fixed;top:0;left:0;width:100%;height:100%;background:#000c;
-        display:flex;align-items:center;justify-content:center;flex-direction:column;gap:25px;
-        z-index:20;color:white;font-family:sans-serif;text-align:center;
-        animation:fadeIn 1.2s;
-    }
-    #startScreen h1{font-size:32px;margin-bottom:8px;}
-    #startScreen button{
-        background:#ff4fa3;border:none;padding:16px 36px;border-radius:14px;color:white;
-        font-size:18px;font-weight:700;cursor:pointer;transition:.25s;
-        box-shadow:0 0 12px rgba(255,80,160,.5);
-    }
-    #startScreen button:hover{
-        background:#ff2f9b;transform:scale(1.08);
-        box-shadow:0 0 20px rgba(255,80,160,.8);
-    }
-    @keyframes fadeOut{from{opacity:1;}to{opacity:0;pointer-events:none;}}
-    @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+#info{
+    position:absolute;top:10px;width:100%;text-align:center;color:white;
+    font-family:sans-serif;text-shadow:1px 1px 3px black;pointer-events:none;
+    opacity:0;transition:.8s;font-size:15px;
+}
+#loading{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    color:white;background:#000a;padding:18px 25px;border-radius:10px;
+    font-family:sans-serif;
+}
+#startScreen{
+    position:fixed;top:0;left:0;width:100%;height:100%;background:#000c;
+    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:25px;
+    z-index:20;color:white;font-family:sans-serif;text-align:center;
+    animation:fadeIn 1.2s;
+}
+#startScreen button{
+    background:#ff4fa3;border:none;padding:16px 36px;border-radius:14px;color:white;
+    font-size:18px;font-weight:700;cursor:pointer;transition:.25s;
+}
+#startScreen button:hover{transform:scale(1.07);}
+@keyframes fadeOut{from{opacity:1;}to{opacity:0;pointer-events:none;}}
 </style>
 </head>
 
@@ -47,14 +41,9 @@
     <button onclick="startExperience()">Enter</button>
 </div>
 
-<!-- UI updated with toggle keys -->
 <div id="info">
-    <b>L</b> All Lights · 
-    <b>Y</b> Wall Strips · 
-    <b>1</b> Ambient · 
-    <b>2</b> Directional · 
-    <b>3</b> Hemisphere · 
-    click = mesh name
+<b>1</b> Orbit · <b>2</b> Walk · <b>Space</b> Jump · 
+<b>L</b> Lights · <b>Y</b> Wall Strips Toggle
 </div>
 
 <div id="loading">Loading Aula...</div>
@@ -70,15 +59,17 @@
 
 import * as THREE from "three";
 import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+import {PointerLockControls} from "three/addons/controls/PointerLockControls.js";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {DRACOLoader} from "three/addons/loaders/DRACOLoader.js";
 import {KTX2Loader} from "three/addons/loaders/KTX2Loader.js";
 import {MeshoptDecoder} from "three/addons/libs/meshopt_decoder.module.js";
 import {RoomEnvironment} from "three/addons/environments/RoomEnvironment.js";
-import { Raycaster, Vector2 } from "three";
 
-// ========================== SCENE ==========================
+// ----- CAMERA -----
 const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.6,1500);
+
+// ----- RENDERER (must come BEFORE scene.environment) -----
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(devicePixelRatio);
@@ -86,115 +77,149 @@ renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=0.58;
 document.body.appendChild(renderer.domElement);
 
+// ----- SCENE -----
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x202020);
 scene.environment=new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment()).texture;
 scene.environmentIntensity=0.22;
 
-// ========================== LIGHTS ==========================
-let lamp = true;      // Toggles all lights (L)
-let stripsOn = true;  // Wall strip emissive lights (Y)
 
-const ambient = new THREE.AmbientLight(0xffffff,0.25);
-const dirLight = new THREE.DirectionalLight(0xffffff,0.7);
-const hemi = new THREE.HemisphereLight(0xe8f4ff,0x9db2c4,0.22);
-
+// --------------------------- Lighting --------------------------- //
+let lamp=true;
+const ambient=new THREE.AmbientLight(0xffffff,0.30);
+const dirLight=new THREE.DirectionalLight(0xffffff,0.90);
+const hemi=new THREE.HemisphereLight(0xe8f4ff,0x9db2c4,0.27);
 dirLight.position.set(5,10,7);
 scene.add(ambient,dirLight,hemi);
 
-// ========================== CONTROLS ==========================
-const orbit=new OrbitControls(camera,renderer.domElement);
-
-// ========================== MESH CLICK NAME ==========================
-const ray=new Raycaster(),mouse=new Vector2();
-window.addEventListener("click",e=>{
-    mouse.x=(e.clientX/innerWidth)*2-1;
-    mouse.y=-(e.clientY/innerHeight)*2+1;
-    ray.setFromCamera(mouse,camera);
-    const h=ray.intersectObjects(scene.children,true);
-    if(h.length>0) console.log("🟩 You clicked →",h[0].object.name);
+addEventListener("keydown",e=>{
+    if(e.key.toLowerCase()=="l"){
+        lamp=!lamp;
+        ambient.intensity=lamp?0.30:0.02;
+        dirLight.intensity=lamp?0.90:0.03;
+        hemi.intensity    =lamp?0.27:0.03;
+        renderer.toneMappingExposure=lamp?0.58:0.18;
+    }
 });
 
-// ========================== LOAD MODEL ==========================
+// --------------------------- Controls --------------------------- //
+let mode="orbit",controlsEnabled=false;
+const orbit=new OrbitControls(camera,renderer.domElement);
+orbit.enableDamping=true;
+
+const fp=new PointerLockControls(camera,document.body);
+
+// --------------------------- Movement + Jump --------------------------- //
+let keys={w:0,a:0,s:0,d:0};
+let yVel=0,grounded=true;
+
+onkeydown=e=>{
+    if(!controlsEnabled) return;
+    if(e.key=="1"){mode="orbit";orbit.enabled=true;fp.unlock();}
+    if(e.key=="2"){mode="walk";orbit.enabled=false;fp.lock();}
+
+    if(e.key=="w")keys.w=1;
+    if(e.key=="s")keys.s=1;
+    if(e.key=="a")keys.a=1;
+    if(e.key=="d")keys.d=1;
+    if(e.code=="Space"&&grounded){yVel=7;grounded=false;}
+};
+onkeyup=e=>{
+    if(e.key=="w")keys.w=0;
+    if(e.key=="s")keys.s=0;
+    if(e.key=="a")keys.a=0;
+    if(e.key=="d")keys.d=0;
+};
+
+// --------------------------- WALK SYSTEM --------------------------- //
+function walk(dt){
+    let speed=16*dt;
+    if(keys.w) fp.moveForward(speed);
+    if(keys.s) fp.moveForward(-speed);
+    if(keys.a) fp.moveRight(-speed);
+    if(keys.d) fp.moveRight(speed);
+
+    yVel -= 18*dt;
+    camera.position.y+=yVel*dt;
+
+    if(camera.position.y<=1.75){
+        camera.position.y=1.75;
+        yVel=0;
+        grounded=true;
+    }
+}
+
+// --------------------------- STRIP LIGHTS + TV SCREEN --------------------------- //
+let stripsOn=true;
+const stripMeshes=[];
+const stripNames=["Cube001_1"];
+
+addEventListener("keydown",e=>{
+    if(e.key.toLowerCase()=="y"){
+        stripsOn=!stripsOn;
+        stripMeshes.forEach(m=>m.emissiveIntensity=stripsOn?2.5:0);
+    }
+});
+
+// --------------------------- LOAD MODEL (FULL MERGE SUCCESS) --------------------------- //
 const loader=new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/draco/"));
 loader.setKTX2Loader(new KTX2Loader().setTranscoderPath("https://unpkg.com/three@0.168.0/examples/jsm/libs/basis/").detectSupport(renderer));
 loader.setMeshoptDecoder(MeshoptDecoder);
 
-const stripMeshes = [];
-const stripNames = ["Cube001_1"];
-
 loader.load("Aula3DModel.glb",g=>{
     const model=g.scene;
     scene.add(model);
 
-    // TV SCREEN
+    // TV Screen
     model.traverse(o=>{
         if(o.isMesh && ["Box001","Box001003"].includes(o.name)){
             const tvTexture=new THREE.TextureLoader().load("image2.jpg");
-            tvTexture.center.set(0.5,0.5);
+            tvTexture.center.set(.5,.5);
             tvTexture.rotation=Math.PI/2;
             o.material=new THREE.MeshBasicMaterial({map:tvTexture,toneMapped:false});
         }
     });
 
-    // WALL STRIPS
+    // Wall Strips
     model.traverse(o=>{
         if(o.isMesh && stripNames.includes(o.name)){
-            const mat = new THREE.MeshStandardMaterial({
-                color: 0xfff4d4,
-                emissive: 0xffc15a,
-                emissiveIntensity: 2.5,
-                roughness: 0.3,
-                metalness: 0.0
+            const mat=new THREE.MeshStandardMaterial({
+                color:0xfff4d4,
+                emissive:0xffc15a,
+                emissiveIntensity:2.5,
+                roughness:0.3,
+                metalness:0
             });
-            o.material = mat;
+            o.material=mat;
             stripMeshes.push(mat);
         }
     });
 
-    camera.position.set(0.5,1.75,-1.9);
-    camera.lookAt(0,1.75,0);
+    camera.position.set(.5,1.75,-1.9);
     document.getElementById("loading").remove();
 });
 
-// ========================== LIGHT TOGGLES ==========================
-window.addEventListener("keydown", e=>{
-    const k=e.key.toLowerCase();
+// --------------------------- Render Loop --------------------------- //
+const clock=new THREE.Clock();
+function animate(){
+    requestAnimationFrame(animate);
+    let dt=clock.getDelta();
 
-    // Toggle all lights
-    if(k==="l"){
-        lamp=!lamp;
-        ambient.visible=dirLight.visible=hemi.visible=lamp;
-        console.log("💡 All Lights:",lamp?"ON":"OFF");
-    }
+    if(mode=="walk") walk(dt);
+    else orbit.update();
 
-    // Wall Strips
-    if(k==="y"){
-        stripsOn=!stripsOn;
-        stripMeshes.forEach(m=>m.emissiveIntensity=stripsOn?2.5:0);
-        console.log("Wall Strips:",stripsOn?"ON":"OFF");
-    }
+    renderer.render(scene,camera);
+}
+animate();
 
-    // Individual Light Toggles
-    if(k==="1") { ambient.visible=!ambient.visible; console.log("Ambient →",ambient.visible); }
-    if(k==="2") { dirLight.visible=!dirLight.visible; console.log("Directional →",dirLight.visible); }
-    if(k==="3") { hemi.visible=!hemi.visible; console.log("Hemisphere →",hemi.visible); }
-});
-
-// ========================== RENDER ==========================
-addEventListener("resize",()=>{
-    camera.aspect=innerWidth/innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth,innerHeight);
-});
-(function loop(){ requestAnimationFrame(loop); orbit.update(); renderer.render(scene,camera); })();
-
-// ========================== START BUTTON ==========================
+// --------------------------- Start --------------------------- //
 window.startExperience=()=>{
-    document.getElementById("startScreen").style.animation="fadeOut 1s forwards";
-    setTimeout(()=>document.getElementById("info").style.opacity=1,800);
+    controlsEnabled=true;
+    startScreen.style.animation="fadeOut 1s forwards";
+    setTimeout(()=>info.style.opacity=1,800);
 };
+
 </script>
 </body>
 </html>
